@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Vim-style modal editing and navigation patterns for Ratatui TUIs"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/ducks/vim-navigator-rs"
 keywords = ["vim", "tui", "ratatui", "modal", "navigation"]
 categories = ["command-line-interface"]
 
