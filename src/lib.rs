@@ -5,6 +5,7 @@ pub enum InputMode {
     Normal,
     Command,
     Insert,
+    Search,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -16,12 +17,17 @@ pub enum NavAction {
     MoveDown,
     MoveTop,
     MoveBottom,
+    Search(String),
+    SearchNext,
+    SearchPrev,
     Quit,
 }
 
 pub struct VimNavigator {
     pub mode: InputMode,
     pub command_buffer: String,
+    pub search_buffer: String,
+    pub last_search: String,
 }
 
 impl VimNavigator {
@@ -29,6 +35,8 @@ impl VimNavigator {
         Self {
             mode: InputMode::Normal,
             command_buffer: String::new(),
+            search_buffer: String::new(),
+            last_search: String::new(),
         }
     }
 
@@ -37,6 +45,7 @@ impl VimNavigator {
             InputMode::Normal => self.handle_normal_mode(key),
             InputMode::Command => self.handle_command_mode(key),
             InputMode::Insert => NavAction::None,
+            InputMode::Search => self.handle_search_mode(key),
         }
     }
 
@@ -48,6 +57,13 @@ impl VimNavigator {
                 self.command_buffer.clear();
                 NavAction::ModeChange(InputMode::Command)
             }
+            KeyCode::Char('/') => {
+                self.mode = InputMode::Search;
+                self.search_buffer.clear();
+                NavAction::ModeChange(InputMode::Search)
+            }
+            KeyCode::Char('n') => NavAction::SearchNext,
+            KeyCode::Char('N') => NavAction::SearchPrev,
             KeyCode::Char('i') => {
                 self.mode = InputMode::Insert;
                 NavAction::ModeChange(InputMode::Insert)
@@ -89,8 +105,38 @@ impl VimNavigator {
         }
     }
 
+    fn handle_search_mode(&mut self, key: KeyEvent) -> NavAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = InputMode::Normal;
+                self.search_buffer.clear();
+                NavAction::ModeChange(InputMode::Normal)
+            }
+            KeyCode::Enter => {
+                let search = self.search_buffer.clone();
+                self.last_search = search.clone();
+                self.mode = InputMode::Normal;
+                self.search_buffer.clear();
+                NavAction::Search(search)
+            }
+            KeyCode::Backspace => {
+                self.search_buffer.pop();
+                NavAction::None
+            }
+            KeyCode::Char(c) => {
+                self.search_buffer.push(c);
+                NavAction::None
+            }
+            _ => NavAction::None,
+        }
+    }
+
     pub fn exit_insert_mode(&mut self) {
         self.mode = InputMode::Normal;
+    }
+
+    pub fn get_last_search(&self) -> &str {
+        &self.last_search
     }
 }
 
