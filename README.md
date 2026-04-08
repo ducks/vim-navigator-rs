@@ -39,6 +39,8 @@ impl App {
             NavAction::MoveUp => self.items_nav.move_up(),
             NavAction::MoveTop => self.items_nav.move_top(),
             NavAction::MoveBottom => self.items_nav.move_bottom(self.items.len()),
+            NavAction::HalfPageDown => self.items_nav.half_page_down(self.items.len(), page_size),
+            NavAction::HalfPageUp => self.items_nav.half_page_up(page_size),
             NavAction::Command(cmd) => self.execute_command(&cmd),
             NavAction::Search(query) => self.search(&query),
             NavAction::SearchNext => self.search_next(),
@@ -63,8 +65,10 @@ impl App {
 ### Normal Mode
 - `j` / Down - Move down
 - `k` / Up - Move up
-- `g` - Jump to top
+- `gg` - Jump to top
 - `G` - Jump to bottom
+- `Ctrl+d` - Half page down
+- `Ctrl+u` - Half page up
 - `:` - Enter command mode
 - `/` - Enter search mode
 - `i` - Enter insert mode
