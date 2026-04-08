@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputMode {
@@ -18,6 +18,8 @@ pub enum NavAction {
     MoveTop,
     MoveBottom,
     Search(String),
+    HalfPageDown,
+    HalfPageUp,
     SearchNext,
     SearchPrev,
     Quit,
@@ -28,6 +30,7 @@ pub struct VimNavigator {
     pub command_buffer: String,
     pub search_buffer: String,
     pub last_search: String,
+    pending_g: bool,
 }
 
 impl VimNavigator {
@@ -37,6 +40,7 @@ impl VimNavigator {
             command_buffer: String::new(),
             search_buffer: String::new(),
             last_search: String::new(),
+            pending_g: false,
         }
     }
 
@@ -50,6 +54,24 @@ impl VimNavigator {
     }
 
     fn handle_normal_mode(&mut self, key: KeyEvent) -> NavAction {
+        // Handle gg sequence
+        if self.pending_g {
+            self.pending_g = false;
+            if key.code == KeyCode::Char('g') {
+                return NavAction::MoveTop;
+            }
+            // g followed by anything else: ignore the g, process the key normally
+        }
+
+        // Ctrl+d / Ctrl+u for half-page scroll
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('d') => NavAction::HalfPageDown,
+                KeyCode::Char('u') => NavAction::HalfPageUp,
+                _ => NavAction::None,
+            };
+        }
+
         match key.code {
             KeyCode::Char('q') => NavAction::Quit,
             KeyCode::Char(':') => {
@@ -70,7 +92,10 @@ impl VimNavigator {
             }
             KeyCode::Char('j') | KeyCode::Down => NavAction::MoveDown,
             KeyCode::Char('k') | KeyCode::Up => NavAction::MoveUp,
-            KeyCode::Char('g') => NavAction::MoveTop,
+            KeyCode::Char('g') => {
+                self.pending_g = true;
+                NavAction::None
+            }
             KeyCode::Char('G') => NavAction::MoveBottom,
             KeyCode::Esc => {
                 self.mode = InputMode::Normal;
@@ -165,6 +190,18 @@ impl ListNavigator {
         }
     }
 
+    pub fn half_page_down(&mut self, list_len: usize, page_size: usize) {
+        let half = page_size / 2;
+        if list_len > 0 {
+            self.selected_index = (self.selected_index + half).min(list_len - 1);
+        }
+    }
+
+    pub fn half_page_up(&mut self, page_size: usize) {
+        let half = page_size / 2;
+        self.selected_index = self.selected_index.saturating_sub(half);
+    }
+
     pub fn move_top(&mut self) {
         self.selected_index = 0;
     }
@@ -221,9 +258,18 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_g_moves_top() {
+    fn normal_mode_gg_moves_top() {
         let mut nav = VimNavigator::new();
+        assert_eq!(nav.handle_key(key(KeyCode::Char('g'))), NavAction::None);
         assert_eq!(nav.handle_key(key(KeyCode::Char('g'))), NavAction::MoveTop);
+    }
+
+    #[test]
+    fn normal_mode_g_then_other_key() {
+        let mut nav = VimNavigator::new();
+        assert_eq!(nav.handle_key(key(KeyCode::Char('g'))), NavAction::None);
+        // g followed by j should just do MoveDown (g is discarded)
+        assert_eq!(nav.handle_key(key(KeyCode::Char('j'))), NavAction::MoveDown);
     }
 
     #[test]
@@ -435,6 +481,59 @@ mod tests {
         assert_eq!(nav.mode, InputMode::Normal);
 
         let list = ListNavigator::default();
+        assert_eq!(list.selected(), 0);
+    }
+
+    // -- Ctrl+d / Ctrl+u --
+
+    #[test]
+    fn ctrl_d_half_page_down() {
+        let mut nav = VimNavigator::new();
+        let k = KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL);
+        assert_eq!(nav.handle_key(k), NavAction::HalfPageDown);
+    }
+
+    #[test]
+    fn ctrl_u_half_page_up() {
+        let mut nav = VimNavigator::new();
+        let k = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL);
+        assert_eq!(nav.handle_key(k), NavAction::HalfPageUp);
+    }
+
+    // -- ListNavigator: half-page --
+
+    #[test]
+    fn list_half_page_down() {
+        let mut list = ListNavigator::new();
+        list.half_page_down(100, 20);
+        assert_eq!(list.selected(), 10);
+        list.half_page_down(100, 20);
+        assert_eq!(list.selected(), 20);
+    }
+
+    #[test]
+    fn list_half_page_down_clamps() {
+        let mut list = ListNavigator::new();
+        list.selected_index = 95;
+        list.half_page_down(100, 20);
+        assert_eq!(list.selected(), 99);
+    }
+
+    #[test]
+    fn list_half_page_up() {
+        let mut list = ListNavigator::new();
+        list.selected_index = 30;
+        list.half_page_up(20);
+        assert_eq!(list.selected(), 20);
+        list.half_page_up(20);
+        assert_eq!(list.selected(), 10);
+    }
+
+    #[test]
+    fn list_half_page_up_clamps_at_zero() {
+        let mut list = ListNavigator::new();
+        list.selected_index = 3;
+        list.half_page_up(20);
         assert_eq!(list.selected(), 0);
     }
 }
